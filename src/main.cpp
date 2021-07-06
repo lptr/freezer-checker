@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+#include <ArduinoJson.h>
 #include <DHT.h>
 #include <PubSubClient.h>
 #include <WiFiManager.h>
@@ -102,7 +103,14 @@ void loop() {
     }
 
     Serial.printf("Humidity: %.2f%% temperature: %.2f\n", humidity, temperature);
-    client.publish("freezer/telemetry", "{ \"temperature\": 12 }");
+
+    DynamicJsonDocument doc(2048);
+    String payload;
+    doc["temperature"] = temperature;
+    doc["humidity"] = humidity;
+    serializeJson(doc, payload);
+
+    client.publish("freezer/telemetry", payload.c_str());
 
     // Wait a few seconds between measurements.
     delay(5000);
