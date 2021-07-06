@@ -1,14 +1,15 @@
 #include <Arduino.h>
 
+#include <Adafruit_BME280.h>
+#include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
-#include <DHT.h>
 #include <PubSubClient.h>
 #include <WiFiManager.h>
+#include <I2CScanner.h>
 
-#define DHTPIN D1
-#define DHTTYPE DHT11
+#define SEALEVELPRESSURE_HPA (1013.25)
 
-DHT dht(DHTPIN, DHTTYPE);
+Adafruit_BME280 bme;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -61,8 +62,23 @@ void reconnect() {
 
 void setup() {
     Serial.begin(115200);
+    Serial.println();
+    Serial.println("Booting...");
 
-    dht.begin();
+    Wire.begin();
+
+    I2CScanner scanner;
+    scanner.Scan();
+
+    if (!bme.begin(BME280_ADDRESS_ALTERNATE)) {
+        Serial.println("Could not find a valid BME280 sensor, check wiring, address, sensor ID!");
+        Serial.print("SensorID was: 0x");
+        Serial.println(bme.sensorID(), 16);
+        Serial.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
+        Serial.print("   ID of 0x56-0x58 represents a BMP 280,\n");
+        Serial.print("        ID of 0x60 represents a BME 280.\n");
+        Serial.print("        ID of 0x61 represents a BME 680.\n");
+    }
 
     WiFi.mode(WIFI_STA);
 
@@ -90,28 +106,22 @@ void loop() {
     }
     client.loop();
 
-    // Reading temperature or humidity takes about 250 milliseconds!
-    // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-    float humidity = dht.readHumidity();
-    // Read temperature as Celsius (the default)
-    float temperature = dht.readTemperature();
+    float humidity = bme.readHumidity();
+    float temperature = bme.readTemperature();
+    float pressure = bme.readPressure();
+    float altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
 
-    // Check if any reads failed and exit early (to try again).
-    if (isnan(humidity) || isnan(temperature)) {
-        Serial.println(F("Failed to read from DHT sensor!"));
-        return;
-    }
-
-    Serial.printf("Humidity: %.2f%% temperature: %.2f\n", humidity, temperature);
+    Serial.printf("Temperature: %.3f%%, humidity: %.3f, pressure: %.3f, altitude: %.3f\n", temperature, humidity, pressure, altitude);
 
     DynamicJsonDocument doc(2048);
     String payload;
     doc["temperature"] = temperature;
     doc["humidity"] = humidity;
+    doc["pressure"] = pressure;
+    doc["altitude"] = altitude;
     serializeJson(doc, payload);
 
     client.publish("freezer/telemetry", payload.c_str());
 
-    // Wait a few seconds between measurements.
     delay(5000);
 }
